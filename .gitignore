@@ -1,0 +1,7 @@
+.terraform.lock.hcl
+terraform.tfstate
+terraform_files/terraform.tfvars
+.terraform/
+.env
+venv
+echo_bot.zip

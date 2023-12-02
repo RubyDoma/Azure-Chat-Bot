@@ -1,0 +1,81 @@
+name: Continuous Integration
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+
+
+jobs:
+  linting:
+    name: linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3.8
+
+      - name: Python code is formatted with black
+        run: |
+          pip install --disable-pip-version-check black
+          black --diff --check .
+  provision:
+    name: Creating infrastructure
+    runs-on: ubuntu-latest
+    env:
+      GIT_TOKEN: ${{secrets.GIT_TOKEN}}
+      ARM_SUBSCRIPTION_ID: ${{secrets.ARM_SUBSCRIPTION_ID}}
+      ARM_CLIENT_ID: ${{secrets.ARM_CLIENT_ID}}
+      ARM_CLIENT_SECRET: ${{secrets.ARM_CLIENT_SECRET}}
+      ARM_TENANT_ID: ${{secrets.ARM_TENANT_ID}}
+      ARM_ACCESS_KEY: ${{secrets.ARM_ACCESS_KEY}}
+      TF_VAR_clientid: ${{secrets.ARM_CLIENT_ID}}
+      TF_VAR_clientsecret: ${{secrets.ARM_CLIENT_SECRET}}
+    steps:
+    - uses: actions/checkout@v3
+    - uses: azure/actions/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }} # needed to deploy code to app service
+
+    - name: Terraform init 
+      run: | 
+        cd terraform_files
+        terraform init -reconfigure
+    - name: Terraform apply
+      run: | 
+        cd terraform_files
+        terraform apply -auto-approve
+
+    - name: Create zip file
+      uses: vimtor/action-zip@v1
+      with:
+          files: bots/ data_models/ venv/ app.py config.py requirements.txt
+          recursive: false
+          dest: echo_bot.zip
+    
+    - name: Run pytest
+      run: | 
+        pip install -r requirements.txt
+        pytest
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: echo_bot
+        path: /home/runner/work/atlassian-chat-bot/atlassian-chat-bot
+        retention-days: 7
+        
+    - name: Building web app
+      uses: azure/appservice-build@v2
+
+    - name: Deploy web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: atlassian-chat
+        package: /home/runner/work/atlassian-chat-bot/atlassian-chat-bot/echo_bot.zip
+
